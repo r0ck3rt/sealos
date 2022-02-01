@@ -19,10 +19,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/spf13/cobra"
+	"github.com/fanux/sealos/pkg/utils/confirm"
 
-	"github.com/fanux/sealos/install"
-	"github.com/fanux/sealos/pkg/logger"
+	"github.com/fanux/sealos/pkg/utils/logger"
+
+	install "github.com/fanux/sealos/pkg/install"
+	v1 "github.com/fanux/sealos/pkg/types/v1alpha1"
+	"github.com/spf13/cobra"
 )
 
 var exampleCmd = `
@@ -81,15 +84,9 @@ func NewEtcdSaveCommand() *cobra.Command {
 		Short: "Stores an etcd node backend snapshot to a given file",
 		Run:   EtcdSaveCmdFunc,
 	}
-	cmd.Flags().BoolVar(&install.InDocker, "docker", false, "snapshot your kubernets etcd in container, will add unix timestamp to snapshot name")
-	cmd.Flags().StringVar(&install.SnapshotName, "name", install.ETCDSNAPSHOTDEFAULTNAME, "Specify snapshot name")
-	cmd.Flags().StringVar(&install.EtcdBackDir, "backupPath", install.ETCDDEFAULTBACKUPDIR, "Specify snapshot backup dir")
-	cmd.Flags().StringVar(&install.BucketName, "bucket", "", "oss bucketName to save snapshot")
-	cmd.Flags().StringVar(&install.AccessKeyID, "aliId", "", "aliyun accessKeyId to save snapshot")
-	cmd.Flags().StringVar(&install.AccessKeySecrets, "aliKey", "", "aliyun accessKeySecrets to save snapshot")
-	cmd.Flags().StringVar(&install.OssEndpoint, "ep", "", "aliyun endpoints to save snapshot")
-	cmd.Flags().StringVar(&install.ObjectPath, "objectPath", "", "aliyun oss objectPath to save snapshot, like: /sealos/snapshots/")
-
+	cmd.Flags().BoolVar(&v1.IsK8sMaster, "k8s-etcd", false, "snapshot your kubernets etcd in container, will add unix timestamp to snapshot name")
+	cmd.Flags().StringVar(&v1.SnapshotName, "name", install.ETCDSNAPSHOTDEFAULTNAME, "Specify snapshot name")
+	cmd.Flags().StringVar(&v1.EtcdBackDir, "backupPath", install.ETCDDEFAULTBACKUPDIR, "Specify snapshot backup dir")
 	return cmd
 }
 
@@ -99,9 +96,9 @@ func NewEtcdRestoreCommand() *cobra.Command {
 		Short: "Restores an etcd member snapshot to an etcd directory",
 		Run:   EtcdRestoreCmdFunc,
 	}
-	cmd.Flags().StringVar(&install.SnapshotName, "name", install.ETCDSNAPSHOTDEFAULTNAME, "Specify snapshot name")
-	cmd.Flags().StringVar(&install.EtcdBackDir, "backupPath", install.ETCDDEFAULTBACKUPDIR, "Specify snapshot backup dir")
-	cmd.Flags().StringVar(&install.RestorePath, "restorePath", install.ETCDDEFAULTRESTOREDIR, "Specify snapshot restore dir")
+	cmd.Flags().StringVar(&v1.SnapshotName, "name", install.ETCDSNAPSHOTDEFAULTNAME, "Specify snapshot name")
+	cmd.Flags().StringVar(&v1.EtcdBackDir, "backupPath", install.ETCDDEFAULTBACKUPDIR, "Specify snapshot backup dir")
+	cmd.Flags().StringVar(&v1.RestorePath, "restorePath", install.ETCDDEFAULTRESTOREDIR, "Specify snapshot restore dir")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "restore need interactive to confirm")
 	return cmd
 }
@@ -116,8 +113,7 @@ func NewEtcdHealthCommand() *cobra.Command {
 
 func EtcdSaveCmdFunc(cmd *cobra.Command, args []string) {
 	e := install.GetEtcdBackFlags(cfgFile)
-	err := e.Save(install.InDocker)
-	if err == nil && e.AccessKeyID != "" {
+	if err := e.Save(v1.IsK8sMaster); err == nil {
 		e.Dump(cfgFile)
 	}
 	logger.Info("Finished saving/uploading snapshot [%s]", e.Name)
@@ -128,8 +124,12 @@ func EtcdRestoreCmdFunc(cmd *cobra.Command, args []string) {
 	e := install.GetRestoreFlags(cfgFile)
 	// restore need interactive to confirm
 	if !force {
-		prompt := fmt.Sprintf("restore cmd will stop your kubernetes cluster immediately and restore etcd from your backup %s file  (y/n)?", e.Name)
-		result := install.Confirm(prompt)
+		prompt := fmt.Sprintf("Are you sure to exec restore cmd will stop your kubernetes cluster immediately and restore etcd from your backup %s file  (y/n)?", e.Name)
+		cancel := "You have canceled to exec restore cmd!"
+		result, err := confirm.Confirm(prompt, cancel)
+		if err != nil {
+			logger.Fatal(err)
+		}
 		if !result {
 			logger.Info("restore %s file is skip, Exit", e.Name)
 			os.Exit(-1)

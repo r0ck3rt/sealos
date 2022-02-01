@@ -15,9 +15,8 @@
 package cmd
 
 import (
+	config2 "github.com/fanux/sealos/pkg/config"
 	"github.com/spf13/cobra"
-
-	"github.com/fanux/sealos/install"
 )
 
 // configCmd represents the config command
@@ -25,13 +24,13 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "print config template to console",
 	Run: func(cmd *cobra.Command, args []string) {
-		install.Config()
+		config2.Config()
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(configCmd)
-	configCmd.Flags().StringVarP(&install.ConfigType, "type", "t", "kubeadm", "template type (Optional: kubeadm)")
+	configCmd.Flags().StringVarP(&config2.ConfigType, "type", "t", "kubeadm", "template type (Optional: kubeadm)")
 
 	// Here you will define your flags and configuration settings.
 
